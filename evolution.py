@@ -13,32 +13,36 @@ def random_color():
 
 # NPC 类设定
 class NPC:
-    def __init__(self, name, x, y, color):
+    def __init__(self, name, x, y, color, radius, speed, health, view, attack, aggressive, reproduction_time, killed, life):
         self.name = name
         self.x = x
         self.y = y
         self.color = color
-        self.radius = 5
-        self.speed = random.randint(2,10)
-        self.health = random.randint(20,200)
-        self.view = random.randint(30,200)
-        self.attack = random.randint(10,100)
-        self.aggressive = random.randint(1,3)
-        self.reproduction_time = random.randint(30,500)
+        self.radius = radius
+        self.speed = speed
+        self.health = health
+        self.max_health = health
+        self.view = view
+        self.attack = attack
+        self.aggressive = aggressive
+        self.reproduction_time = reproduction_time
         self.time_since_reproduction = 0
-        self.killed = 0
+        self.killed = killed
+        self.life = life
+        self.max_life = life
 
     # 更新 NPC 的属性
     def update(self, npc_list):
         self.move(npc_list)
-        if self.health <= 0:
-            npc_list.remove(self)
         self.time_since_reproduction += 1
+        self.life -= 1
         if self.time_since_reproduction >= self.reproduction_time:
             self.reproduce(npc_list)
             self.time_since_reproduction = 0
+        if self.life <= 0:
+            npc_list.remove(self)
 
-    # NPC 撤回 以防止重叠
+    # NPC 逃跑
     def retreat(self, other_x, other_y):
         if self.x > other_x:
             self.x += self.speed
@@ -51,7 +55,7 @@ class NPC:
 
     # NPC 繁殖
     def reproduce(self, npc_list):
-        offspring = NPC(self.name, self.x, self.y, self.color)
+        offspring = NPC(self.name, self.x, self.y, self.color, self.radius, self.speed, self.max_health, self.view, self.attack, self.aggressive, self.reproduction_time, self.killed, self.max_life)
         npc_list.append(offspring)
 
     # NPC 移动
@@ -59,46 +63,51 @@ class NPC:
         npc_in_view = self.npc_in_view(npc_list)
         if npc_in_view:
             nearest_npc = self.nearest_npc(npc_in_view)
-            if self.check_colliding_npcs(nearest_npc) == True:
-                self.attack_npc(nearest_npc)
-
-            if self.aggressive == 1:
-                self.retreat(nearest_npc.x, nearest_npc.y)
-            elif self.aggressive == 2:
-                if self.health > self.health / 2:
-                    self.approach(nearest_npc.x, nearest_npc.y)
-                else:
+            if nearest_npc:
+                if self.check_colliding_npcs(nearest_npc) == True:
+                    self.attack_npc(nearest_npc, npc_list)
+                if self.aggressive == 1:
                     self.retreat(nearest_npc.x, nearest_npc.y)
+                elif self.aggressive == 2:
+                    if self.health > self.health / 2:
+                        self.approach(nearest_npc.x, nearest_npc.y)
+                    else:
+                        self.retreat(nearest_npc.x, nearest_npc.y)
+                else:
+                    self.approach(nearest_npc.x, nearest_npc.y)
             else:
-                self.approach(nearest_npc.x, nearest_npc.y)
+                self.stray()
         else:
             self.stray()        
         # 如果超出了范围，NPC将出现在另一象限
+        
         if self.x < 0:
-            self.x = 1280
-        if self.x > 1280:
-            self.x = 0
+            self.x = DISPLAY_WIDTH + self.x - self.radius
+        if self.x > DISPLAY_WIDTH:
+            self.x = self.x - DISPLAY_WIDTH + self.radius
         if self.y < 0:
-            self.y = 960
-        if self.y > 960:
-            self.y = 0
+            self.y = DISPLAY_HEIGHT + self.y - self.radius
+        if self.y > DISPLAY_HEIGHT:
+            self.y = self.y - DISPLAY_HEIGHT + self.radius
+        
 
     #检测NPC碰撞
     def check_colliding_npcs(self, nearest_npc):
-        if abs(self.x - nearest_npc.x) <= self.radius*2 or abs(self.y - nearest_npc.y) <= self.radius*2:
+        if abs(self.x - nearest_npc.x) <= self.radius and abs(self.y - nearest_npc.y) <= self.radius:
             return True
         else:
             return False  
 
     # NPC 攻击
-    def attack_npc(self, other_npc):
-        if other_npc.name == self.name and other_npc.color == self.color: #自己繁殖的NPC不攻击
+    def attack_npc(self, other_npc, npc_list):
+        if other_npc.name == self.name: #自己繁殖的NPC不攻击
             return
         else:
             other_npc.health -= self.attack
         
         if other_npc.health <= 0:
             self.killed += 1
+            npc_list.remove(other_npc)
 
     # NPC 逃跑
     def retreat(self, other_x, other_y):
@@ -124,20 +133,47 @@ class NPC:
 
     # NPC 游荡
     def stray(self):
-        self.x += random.randint(-self.speed,self.speed)
-        self.y += random.randint(-self.speed,self.speed)
+        random.seed()
+        self.x = random.randint(-self.speed,self.speed)
+        random.seed()
+        self.y = random.randint(-self.speed,self.speed)
+        
+        '''
+        random.seed()
+        if self.x > DISPLAY_WIDTH/2:
+            self.x += random.randint(-self.speed,int(self.speed/2))
+        else:
+            self.x += random.randint(-int(self.speed/2),self.speed)
+        random.seed()
+        if self.y > DISPLAY_HEIGHT/2:
+            self.y += random.randint(-self.speed,int(self.speed/2))
+        else:
+            self.y += random.randint(-int(self.speed/2),self.speed)
+        '''
+        
 
     # NPC 的视野范围内其他的 NPC
     def npc_in_view(self, npc_list):
         npc_in_view = []
         for npc in npc_list:
-            if npc != self:
-                dist = ((npc.x - self.x)**2 + (npc.y - self.y)**2)**0.5
-                if dist <= self.view:
+            if npc.name != self.name:
+                if abs(npc.x - self.x) <= self.view and abs(npc.y - self.y) <= self.view: #减少计算量简单计算，实际应该计算圆形面积内的NPC
                     npc_in_view.append(npc)
         return npc_in_view
 
-    # 最近的 NPC
+    # 最近的敌对 NPC
+    
+    def nearest_npc(self, npc_list):
+        min_dist = self.view * 2
+        nearest_npc = None
+        for npc in npc_list:
+            if npc.name != self.name:
+                dist = abs(npc.x - self.x) + abs(npc.y - self.y)
+                if dist < min_dist:
+                    min_dist = dist
+                    nearest_npc = npc
+        return nearest_npc
+    '''
     def nearest_npc(self, npc_list):
         min_dist = 100000
         nearest_npc = None
@@ -148,6 +184,7 @@ class NPC:
                     min_dist = dist
                     nearest_npc = npc
         return nearest_npc
+    '''
 
 # 创建随机名称的函数
 def random_name():
@@ -159,12 +196,37 @@ def random_name():
 # 创建NPC 列表
 def create_npcs():
     npc_list = []
-    for i in range(100):
+    row = 1
+    column = 1
+    x = 1 
+    y = 1
+    npc_number = 300
+    for i in range(npc_number):
         name = random_name()
         color = random_color()
-        x = random.randint(0,DISPLAY_WIDTH)
-        y = random.randint(0,DISPLAY_HEIGHT)
-        npc = NPC(name, x, y, color)
+        x = int(row * DISPLAY_WIDTH/(npc_number**0.5))
+        row += 1
+        if x >= DISPLAY_WIDTH:
+            y = int(column * DISPLAY_HEIGHT/(npc_number**0.5))
+            row = 1
+            column += 1
+        if y > DISPLAY_WIDTH:
+            message_display('Too much NPC !! Please reduce the NPC number!!',DISPLAY_WIDTH/2-100,DISPLAY_WIDTH/2-100,50)
+            time.sleep(3)
+            pygame.quit()
+            quit()
+        
+        radius = random.randint(2,10)
+        speed = random.randint(5,30)
+        health = random.randint(50,500)
+        view = random.randint(30,300)
+        attack = random.randint(10,300)
+        aggressive = random.randint(1,3)
+        reproduction_time = random.randint(20,300)
+        killed = 0
+        life = random.randint(reproduction_time*2+1,reproduction_time*4+1)
+        
+        npc = NPC(name, x, y, color, radius, speed, health, view, attack, aggressive, reproduction_time, killed, life)
         npc_list.append(npc)
     return npc_list
 
@@ -183,29 +245,31 @@ def display_stat_window(npc_list):
             npc_counts[npc.name] = {
                 "count": 0,
                 "color": npc.color,
-                "health": npc.health,
+                "max_health": npc.max_health,
                 "speed": npc.speed,
                 "view": npc.view,
                 "attack": npc.attack,
                 "aggressive": npc.aggressive,
                 "reproduction_time": npc.reproduction_time,
-                "killed": npc.killed
+                "killed": npc.killed,
+                "max_life": npc.max_life
                 }
         npc_counts[npc.name]["count"] += 1
-    message_display("Statistics", DISPLAY_WIDTH / 2-150, DISPLAY_HEIGHT / 2-150, 50)
+    message_display("Statistics", DISPLAY_WIDTH / 2-150, 5, 40)
     count = 0
     for name,attributes in npc_counts.items():
         count += 1
         message = f"Name: {name}  Count: {attributes['count']}"
-        message += f"  Health: {attributes['health']}"
+        message += f"  max_health: {attributes['max_health']}"
         message += f"  Speed: {attributes['speed']}"
         message += f"  View: {attributes['view']}"
         message += f"  Attack: {attributes['attack']}"
         message += f"  Aggressive: {attributes['aggressive']}"
         message += f"  Reproduction Time: {attributes['reproduction_time']}"
         message += f"  Killed: {attributes['killed']}"
-        pygame.draw.rect(game_display,attributes['color'],(50,count*50,30,30))
-        message_display(message,10,count*50,30)
+        message += f"  max_life: {attributes['max_life']}"
+        pygame.draw.rect(game_display,attributes['color'],(0,count*35,50,15))
+        message_display(message,10,count*35,20)
 
 # 消息函数
 def message_display(text, x, y, font_size):
@@ -221,11 +285,14 @@ def game_loop():
     game_paused = False
     while not game_exit:
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                game_exit = True
-            elif event.type == pygame.KEYDOWN:
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_q:
+                    game_exit = True
                 if event.key == pygame.K_p:
-                    game_paused = True
+                    if game_paused == False:
+                        game_paused = True
+                    else:
+                        game_paused = False
 
         game_display.fill((255,255,255))
         # 当游戏 paused（暂停） 需要显示统计信息
@@ -236,11 +303,11 @@ def game_loop():
                 npc.update(npc_list)
                 draw_npc(npc)
 
-        message_display("Click 'p' button to Pause/Play", 5, 5, 20)
-        message_display("Press Q to quit the game", 5, 30, 20)
+        message_display("Click 'p' button to Pause/Play", 150, 5, 20)
+        message_display("Press 'q' to quit ", 5, 5, 20)
 
         pygame.display.update()
-        clock.tick(24)
+        clock.tick(10)
 
     pygame.quit()
     quit()
